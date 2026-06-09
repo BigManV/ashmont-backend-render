@@ -1,0 +1,792 @@
+{
+  "agent_id": "",
+  "channel": "voice",
+  "last_modification_timestamp": 1780857103405,
+  "agent_name": "Insurance Verification Caller (from template)",
+  "response_engine": {
+    "type": "conversation-flow",
+    "version": 0,
+    "conversation_flow_id": "conversation_flow_b31fc8f0071b"
+  },
+  "language": "en-US",
+  "data_storage_setting": "everything",
+  "opt_in_signed_url": false,
+  "version": 0,
+  "assigned_tags": [],
+  "is_published": false,
+  "post_call_analysis_model": "gpt-4.1-mini",
+  "pii_config": {
+    "mode": "post_call",
+    "categories": []
+  },
+  "guardrail_config": {
+    "output_topics": [
+      "harassment",
+      "self_harm",
+      "sexual_exploitation",
+      "violence",
+      "defense_and_national_security",
+      "illicit_and_harmful_activity",
+      "gambling",
+      "regulated_professional_advice",
+      "child_safety_and_exploitation"
+    ],
+    "input_topics": [
+      "platform_integrity_jailbreaking"
+    ]
+  },
+  "handbook_config": {
+    "echo_verification": false,
+    "speech_normalization": true,
+    "default_personality": true,
+    "scope_boundaries": true,
+    "natural_filler_words": false,
+    "nato_phonetic_alphabet": false,
+    "high_empathy": false,
+    "ai_disclosure": true,
+    "smart_matching": true
+  },
+  "post_call_analysis_data": [
+    {
+      "name": "Coverage Active",
+      "description": "Whether the patient's insurance coverage is currently active and eligible",
+      "type": "string",
+      "examples": [
+        "Active",
+        "Inactive",
+        "Unable to verify"
+      ]
+    },
+    {
+      "type": "number",
+      "name": "In-Network Deductible",
+      "description": "The patient's in-network annual deductible amount in dollars"
+    },
+    {
+      "type": "number",
+      "name": "Deductible Met",
+      "description": "How much of the in-network deductible has been met so far this year in dollars"
+    },
+    {
+      "type": "number",
+      "name": "Out-of-Pocket Maximum",
+      "description": "The patient's in-network out-of-pocket maximum in dollars"
+    },
+    {
+      "type": "number",
+      "name": "OOP Met",
+      "description": "How much of the out-of-pocket maximum has been met so far this year in dollars"
+    },
+    {
+      "name": "Copay or Coinsurance",
+      "description": "The applicable copay amount or coinsurance percentage for the relevant service type",
+      "type": "string",
+      "examples": [
+        "$30 copay",
+        "20% coinsurance",
+        "No copay"
+      ]
+    },
+    {
+      "name": "Prior Auth Required",
+      "description": "Whether a prior authorization is required for the service",
+      "type": "string",
+      "examples": [
+        "Yes",
+        "No",
+        "Unknown"
+      ]
+    },
+    {
+      "name": "Authorization Number",
+      "description": "The prior authorization number if one was obtained or provided",
+      "type": "string",
+      "examples": [
+        "AUTH-A1B2C3D4",
+        "N/A"
+      ]
+    },
+    {
+      "name": "Insurance Rep Name",
+      "description": "Full name of the insurance representative spoken with",
+      "type": "string",
+      "examples": [
+        "Jessica Moore",
+        "David Kim"
+      ]
+    },
+    {
+      "name": "Reference Number",
+      "description": "Call reference or confirmation number provided by the insurance representative",
+      "type": "string",
+      "examples": [
+        "REF-20250313-0042",
+        "N/A"
+      ]
+    },
+    {
+      "type": "boolean",
+      "name": "hit_ivr",
+      "description": "Was an IVR or automated phone system encountered at any point before reaching a human?"
+    },
+    {
+      "type": "boolean",
+      "name": "reached_human",
+      "description": "Did the agent speak with a real human staff member at any point during the call?"
+    },
+    {
+      "type": "boolean",
+      "name": "ivr_loop",
+      "description": "Did the IVR appear to loop or repeat the same menu/prompt due to misunderstanding or invalid input?"
+    },
+    {
+      "type": "boolean",
+      "name": "after_hours_message",
+      "description": "Did the call reach an explicit after-hours/closed-office message?"
+    },
+    {
+      "type": "boolean",
+      "name": "reached_voicemail",
+      "description": "Did the call reach a voicemail system?"
+    },
+    {
+      "type": "boolean",
+      "name": "hold_music_detected",
+      "description": "Was the agent placed on hold with hold music or hold announcements?"
+    },
+    {
+      "name": "ivr_type",
+      "description": "Classify the type of automated system encountered.",
+      "type": "enum",
+      "choices": [
+        "none",
+        "basic_menu",
+        "speech_ivr",
+        "voicemail_greeting_only",
+        "after_hours_message_only"
+      ]
+    },
+    {
+      "name": "ivr_outcome",
+      "description": "What was the final outcome of the IVR navigation portion of the call?",
+      "type": "enum",
+      "choices": [
+        "reached_human",
+        "left_voicemail",
+        "hung_up",
+        "blocked_by_ivr",
+        "callback_required",
+        "transferred",
+        "ivr_loop_detected",
+        "invalid_extension",
+        "after_hours_info_only"
+      ]
+    },
+    {
+      "name": "reason_failed",
+      "description": "If the call did not successfully reach the intended human department, what was the primary reason?",
+      "type": "enum",
+      "choices": [
+        "none",
+        "ivr_blocked",
+        "after_hours",
+        "voicemail_only",
+        "no_answer",
+        "wrong_department",
+        "call_dropped",
+        "bot_no_handoff"
+      ]
+    },
+    {
+      "type": "number",
+      "name": "ivr_steps_count",
+      "description": "How many distinct IVR steps occurred before reaching a human or ending?"
+    },
+    {
+      "type": "string",
+      "name": "ivr_path",
+      "description": "Summarize the IVR navigation path as a breadcrumb using > separators. If no IVR, output none."
+    },
+    {
+      "type": "string",
+      "name": "ivr_tree_text",
+      "description": "Create a concise step-by-step IVR tree in numbered lines. Each line: N. Prompt: \"<summary>\" | Action: \"<pressed/said>\" | Result: \"<next state>\". If no IVR, output none."
+    }
+  ],
+  "voice_id": "retell-Grace",
+  "fallback_voice_ids": [],
+  "voice_temperature": 1,
+  "voice_speed": 1.1,
+  "enable_dynamic_voice_speed": true,
+  "volume": 1,
+  "max_call_duration_ms": 3600000,
+  "interruption_sensitivity": 0.8,
+  "ambient_sound": "call-center",
+  "enable_dynamic_responsiveness": true,
+  "normalize_for_speech": true,
+  "ring_duration_ms": 90000,
+  "allow_user_dtmf": true,
+  "user_dtmf_options": {},
+  "denoising_mode": "noise-and-background-speech-cancellation",
+  "conversationFlow": {
+    "conversation_flow_id": "conversation_flow_b31fc8f0071b",
+    "version": 0,
+    "global_prompt": "## Role\n\nYou are **Alex**, an **Insurance Verification Specialist** calling on behalf of **Retell Clinic**. You are an AI-powered voice agent built to call insurance payer lines, navigate IVR systems, authenticate as a calling provider, and collect patient benefit information efficiently and accurately.\n\n## Context\n\nYou are placing outbound calls to insurance payer phone lines. The person on the other end is an insurance company representative, not a patient. You are verifying benefits for a patient at Retell Clinic.\n\n## Hold / Pause Handling\nIf you are told:\n• “Hold on”\n• “One moment”\n• “Please wait”\n• Or similar\n\nYou must respond with exactly:\nNO_RESPONSE_NEEDED",
+    "nodes": [
+      {
+        "name": "Patient Verification",
+        "edges": [
+          {
+            "destination_node_id": "node-fn-lookup-1773414100004",
+            "id": "edge-1773414100003-confirmed",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Representative confirms the patient's identity"
+            }
+          }
+        ],
+        "id": "node-1773414100003",
+        "type": "conversation",
+        "display_position": {
+          "x": 1110,
+          "y": 150
+        },
+        "instruction": {
+          "type": "prompt",
+          "text": "Provide the following patient details as the representative requests them:\n\n- Patient name: {{patient_first_name}} {{patient_last_name}}\n- Date of birth: {{patient_dob}}\n- Member ID: {{member_id}}\n- Group number: {{group_number}}\n\n<*Wait for customer response*>\n\nIf the representative reads back a member ID or any alphanumeric string, confirm it character by character using the NATO Phonetic Alphabet.\n\n<*Wait for customer response*>\n\nOnce the representative confirms the patient's identity, proceed."
+        }
+      },
+      {
+        "tool_id": "tool-insuranceverif-lookup01",
+        "else_edge": {
+          "destination_node_id": "node-1774411529048",
+          "id": "node-fn-lookup-1773414100004-else-edge",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Else"
+          }
+        },
+        "name": "Lookup Patient Record",
+        "edges": [
+          {
+            "destination_node_id": "node-1773414100005",
+            "id": "edge-fn-lookup-success",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Once the function is called, transition to next node."
+            }
+          }
+        ],
+        "id": "node-fn-lookup-1773414100004",
+        "type": "function",
+        "tool_type": "local",
+        "speak_during_execution": false,
+        "display_position": {
+          "x": 1662,
+          "y": 246
+        },
+        "wait_for_result": true
+      },
+      {
+        "name": "Benefits Collection",
+        "edges": [
+          {
+            "destination_node_id": "node-1773414100006",
+            "id": "edge-1773414100005-collected",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "All benefit questions have been answered including eligibility, deductible, out-of-pocket max, copay or coinsurance, and prior authorization status"
+            }
+          }
+        ],
+        "id": "node-1773414100005",
+        "type": "conversation",
+        "display_position": {
+          "x": 2190,
+          "y": 6
+        },
+        "instruction": {
+          "type": "prompt",
+          "text": "Ask the following questions one at a time. Wait for a full response before asking the next.\n\n### Step 1: Check Eligibility\n\nProvide a natural variation of:\n> \"Is the patient currently active and eligible as of today?\"\n\n<*Wait for customer response*>\n\n### Step 2: In-Network Deductible\n\nProvide a natural variation of:\n> \"What's the in-network deductible, and how much has been met?\"\n\n<*Wait for customer response*>\n\n### Step 3: Out-Of-Pocket Maximum\n\nProvide a natural variation of:\n> \"What's the out-of-pocket maximum, and how much has been met?\"\n\n<*Wait for customer response*>\n\n### Step 4: Copay Or Coinsurance\n\nProvide a natural variation of:\n> \"What's the copay or coinsurance for {{service_type}}?\"\n\n<*Wait for customer response*>\n\n### Step 5: Prior Authorization\n\nProvide a natural variation of:\n> \"Is a prior authorization required for this service?\"\n\n<*Wait for customer response*>\n\n### Step 6: Authorization Number (If Required)\n\nIf prior auth is required, provide a natural variation of:\n> \"Can I get that authorization number?\"\n\n<*Wait for customer response*>\n\nWhen the representative gives an auth number or reference ID, read it back using the NATO Phonetic Alphabet to confirm accuracy."
+        }
+      },
+      {
+        "name": "Summary Confirmation",
+        "edges": [
+          {
+            "destination_node_id": "node-fn-submit-1773414100007",
+            "id": "edge-1773414100006-confirmed",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Representative confirms the summary and provides their name and a call reference number"
+            }
+          }
+        ],
+        "id": "node-1773414100006",
+        "type": "conversation",
+        "display_position": {
+          "x": 2742,
+          "y": 126
+        },
+        "instruction": {
+          "type": "prompt",
+          "text": "Read back the full benefit summary to the representative to confirm accuracy.\n\n### Step 1: Read Back Summary\n\nRespond exactly with:\n> \"Just to confirm — {{patient_first_name}} {{patient_last_name}} is [active/inactive], in-network deductible is [amount] with [amount] met, out-of-pocket max is [amount] with [amount] met, [copay/coinsurance] applies to {{service_type}}, and prior auth [is / is not] required. Is that all correct?\"\n\n<*Wait for customer response*>\n\n### Step 2: Collect Rep Details\n\nProvide a natural variation of:\n> \"What is your name, and can I get a reference number for this call?\"\n\n<*Wait for customer response*>"
+        }
+      },
+      {
+        "tool_id": "tool-insuranceverif-submit01",
+        "else_edge": {
+          "destination_node_id": "node-1774411582763",
+          "id": "node-fn-submit-1773414100007-else-edge",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Else"
+          }
+        },
+        "name": "Submit Verification",
+        "edges": [
+          {
+            "destination_node_id": "node-1773414100008",
+            "id": "edge-fn-submit-done",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Once the function is called, transition to next node."
+            }
+          }
+        ],
+        "id": "node-fn-submit-1773414100007",
+        "type": "function",
+        "tool_type": "local",
+        "speak_during_execution": false,
+        "display_position": {
+          "x": 3294,
+          "y": 246
+        },
+        "wait_for_result": true
+      },
+      {
+        "instruction": {
+          "type": "static_text",
+          "text": "Thank you for providing that information. Our team will review it and contact you shortly."
+        },
+        "name": "Closing Message",
+        "edges": [],
+        "id": "node-1773414100008",
+        "type": "conversation",
+        "display_position": {
+          "x": 3846,
+          "y": 270
+        },
+        "skip_response_edge": {
+          "destination_node_id": "end-call-node-success",
+          "id": "skip-response-edge-1773414100008-close",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Skip response"
+          }
+        }
+      },
+      {
+        "name": "End Call — Success",
+        "id": "end-call-node-success",
+        "type": "end",
+        "display_position": {
+          "x": 4398,
+          "y": 270
+        },
+        "instruction": {
+          "type": "prompt",
+          "text": "End the call"
+        }
+      },
+      {
+        "instruction": {
+          "type": "prompt",
+          "text": "Politely close the call based on the reason.\n\n- If wrong company:\n  Respond exactly with:\n  > \"Sorry about that — have a good day.\"\n\n- If after hours:\n  Respond exactly with:\n  > \"Sounds like the office is closed — we'll try again during business hours.\"\n\n- If voicemail reached: Do not leave a message. End the call silently.\n\n- If IVR cannot be navigated: End the call without speaking."
+        },
+        "name": "Failure Close Message",
+        "edges": [],
+        "id": "node-1773414100009",
+        "type": "conversation",
+        "display_position": {
+          "x": 1110,
+          "y": 750
+        },
+        "skip_response_edge": {
+          "destination_node_id": "end-call-node-failure",
+          "id": "skip-response-edge-1773414100009-fail",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Skip response"
+          }
+        }
+      },
+      {
+        "name": "End Call — Failure",
+        "id": "end-call-node-failure",
+        "type": "end",
+        "display_position": {
+          "x": 1590,
+          "y": 750
+        },
+        "instruction": {
+          "type": "prompt",
+          "text": "End the call"
+        }
+      },
+      {
+        "instruction": {
+          "type": "prompt",
+          "text": "Inform that this patient is not a part of this clinic "
+        },
+        "always_edge": {
+          "destination_node_id": "node-1774411560948",
+          "id": "always-edge-1774411558041-fj0ctaf43",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Always"
+          }
+        },
+        "name": "Conversation",
+        "edges": [],
+        "id": "node-1774411529048",
+        "type": "conversation",
+        "display_position": {
+          "x": 2046,
+          "y": 726
+        }
+      },
+      {
+        "name": "End Call",
+        "id": "node-1774411560948",
+        "type": "end",
+        "speak_during_execution": true,
+        "display_position": {
+          "x": 2742,
+          "y": 894
+        },
+        "instruction": {
+          "type": "prompt",
+          "text": "Politely end the call"
+        }
+      },
+      {
+        "instruction": {
+          "type": "static_text",
+          "text": "There was an error with our system, someone will follow up with you shortly"
+        },
+        "name": "Conversation",
+        "edges": [],
+        "id": "node-1774411582763",
+        "type": "conversation",
+        "display_position": {
+          "x": 3846,
+          "y": 630
+        },
+        "skip_response_edge": {
+          "destination_node_id": "end-call-node-success",
+          "id": "skip-response-edge-1774411617986-jewl4rkdm",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Skip response"
+          }
+        }
+      },
+      {
+        "component_type": "local",
+        "component_id": "cf-component-1776294427578",
+        "else_edge": {
+          "destination_node_id": "node-1773414100009",
+          "id": "comp-else-edge",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "Else"
+          }
+        },
+        "name": "IVR Navigation And Provider Auth",
+        "edges": [
+          {
+            "destination_node_id": "node-1773414100003",
+            "id": "comp-edge-success",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Representative acknowledges the provider or asks for patient information"
+            }
+          },
+          {
+            "destination_node_id": "node-1773414100009",
+            "id": "comp-edge-failure",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "The IVR explicitly states the wrong company, plays an after-hours or office-closed message, or reaches a voicemail greeting"
+            }
+          }
+        ],
+        "id": "comp-node-ivr-auth",
+        "type": "component",
+        "display_position": {
+          "x": 558,
+          "y": 222
+        }
+      }
+    ],
+    "components": [
+      {
+        "name": "IVR Navigation And Provider Auth",
+        "start_node_id": "ivr-press-digit-node",
+        "conversation_flow_component_id": "cf-component-1776294427578",
+        "nodes": [
+          {
+            "delay_ms": 1000,
+            "instruction": {
+              "type": "prompt",
+              "text": "Navigate the IVR toward the correct department.\n\n## Target Options (In Priority Order):\n1. Eligibility and Benefits — e.g. \"benefits\", \"eligibility\", \"coverage\", \"insurance\"\n2. Provider Services — e.g. \"provider\", \"provider line\"\n3. Authorizations / Prior Auth — e.g. \"authorizations\", \"pre-certification\"\n4. Claims — only if none of the above are available\n5. If asked member or provider — select provider\n\n## Avoid:\n- Member Services / patient-facing lines\n- Billing or payments\n- Medical Records\n- Pharmacy\n- Clinical departments\n- New enrollment\n\nIf no option clearly matches, select the most general option (e.g. \"all other inquiries\", \"other\", \"general\").\nIf asked for NPI, press digits for {{provider_npi}}."
+            },
+            "name": "IVR Navigation",
+            "edges": [
+              {
+                "destination_node_id": "ivr-provider-auth",
+                "id": "edge-press-to-human",
+                "transition_condition": {
+                  "type": "prompt",
+                  "prompt": "A live representative answers, the system says please hold or transferring, or an automated eligibility response begins"
+                }
+              },
+              {
+                "destination_node_id": "ivr-exit-failure",
+                "id": "edge-press-to-failure",
+                "transition_condition": {
+                  "type": "prompt",
+                  "prompt": "The IVR explicitly states the wrong company, plays an after-hours or office-closed message, or reaches a voicemail greeting"
+                }
+              }
+            ],
+            "id": "ivr-press-digit-node",
+            "type": "press_digit",
+            "display_position": {
+              "x": 200,
+              "y": 0
+            }
+          },
+          {
+            "instruction": {
+              "type": "static_text",
+              "text": "Hi, I'm calling on behalf of Retell Clinic. Our NPI is {{provider_npi}}. I'm calling to verify benefits for one of our patients."
+            },
+            "name": "Provider Authentication",
+            "edges": [],
+            "id": "ivr-provider-auth",
+            "type": "conversation",
+            "display_position": {
+              "x": 1030,
+              "y": 382
+            },
+            "skip_response_edge": {
+              "destination_node_id": "ivr-exit-success",
+              "id": "edge-auth-skip-to-success",
+              "transition_condition": {
+                "type": "prompt",
+                "prompt": "Skip response"
+              }
+            }
+          },
+          {
+            "name": "Exit Component",
+            "id": "ivr-exit-success",
+            "type": "end",
+            "display_position": {
+              "x": 2081,
+              "y": 521
+            },
+            "instruction": {
+              "type": "static_text",
+              "text": "Component completed"
+            }
+          },
+          {
+            "name": "Exit Component — Failure",
+            "id": "ivr-exit-failure",
+            "type": "end",
+            "display_position": {
+              "x": 1836,
+              "y": -26
+            },
+            "instruction": {
+              "type": "static_text",
+              "text": "Component completed"
+            }
+          }
+        ],
+        "flex_mode": true
+      }
+    ],
+    "start_node_id": "comp-node-ivr-auth",
+    "start_speaker": "user",
+    "tools": [
+      {
+        "headers": {},
+        "parameter_type": "json",
+        "method": "GET",
+        "query_params": {
+          "member_id": "{{member_id}}",
+          "patient_last_name": "{{patient_last_name}}",
+          "patient_dob": "{{patient_dob}}",
+          "patient_first_name": "{{patient_first_name}}",
+          "group_number": "{{group_number}}"
+        },
+        "description": "Retrieve the patient's internal case record once the insurance representative has confirmed the patient's identity. Returns the case ID needed for logging the verification.",
+        "type": "custom",
+        "url": "https://template-agents-api.onrender.com/api/lookup_patient_record",
+        "tool_id": "tool-insuranceverif-lookup01",
+        "args_at_root": false,
+        "timeout_ms": 15000,
+        "speak_after_execution": false,
+        "name": "lookup_patient_record",
+        "response_variables": {
+          "patient_id": "patient_id",
+          "found_record": "found_record"
+        },
+        "speak_during_execution": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "member_id": {
+              "type": "string",
+              "description": "The patient's insurance member ID"
+            },
+            "patient_last_name": {
+              "type": "string",
+              "description": "The patient's last name"
+            },
+            "date_of_birth": {
+              "type": "string",
+              "description": "The patient's date of birth in YYYY-MM-DD format"
+            }
+          },
+          "required": [
+            "member_id",
+            "patient_last_name",
+            "date_of_birth"
+          ]
+        }
+      },
+      {
+        "headers": {},
+        "parameter_type": "json",
+        "method": "POST",
+        "query_params": {},
+        "description": "Submit the completed insurance benefit verification after all details have been collected and confirmed with the representative. Call this before ending the call.",
+        "type": "custom",
+        "url": "https://template-agents-api.onrender.com/api/submit_verification",
+        "tool_id": "tool-insuranceverif-submit01",
+        "args_at_root": false,
+        "timeout_ms": 20000,
+        "speak_after_execution": false,
+        "name": "submit_verification",
+        "response_variables": {
+          "verification_id": "verification_id",
+          "verification_success": "verification_success"
+        },
+        "speak_during_execution": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "service_type": {
+              "type": "string",
+              "description": "The service type being verified, such as specialist visit, surgery, imaging, or other relevant benefit category"
+            },
+            "prior_auth_required": {
+              "type": "boolean",
+              "description": "Whether prior authorization is required for the specified service type"
+            },
+            "out_of_pocket_max": {
+              "type": "number",
+              "description": "The patient's in-network out-of-pocket maximum in dollars"
+            },
+            "rep_name": {
+              "type": "string",
+              "description": "Full name of the insurance representative spoken with"
+            },
+            "coverage_active": {
+              "type": "boolean",
+              "description": "Whether the patient's coverage is currently active"
+            },
+            "case_id": {
+              "type": "string",
+              "description": "The case ID returned from lookup_patient_record"
+            },
+            "oop_met": {
+              "type": "number",
+              "description": "How much of the out-of-pocket maximum has been met in dollars"
+            },
+            "copay_or_coinsurance": {
+              "type": "string",
+              "description": "The copay amount or coinsurance percentage that applies to the specified service type"
+            },
+            "reference_number": {
+              "type": "string",
+              "description": "Call reference, confirmation, or tracking number provided by the representative"
+            },
+            "authorization_number": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The prior authorization number if applicable, otherwise null"
+            },
+            "in_network_deductible": {
+              "type": "number",
+              "description": "The patient's in-network annual deductible in dollars"
+            },
+            "deductible_met": {
+              "type": "number",
+              "description": "How much of the in-network deductible has been met in dollars"
+            }
+          },
+          "required": [
+            "case_id",
+            "coverage_active",
+            "in_network_deductible",
+            "deductible_met",
+            "out_of_pocket_max",
+            "oop_met",
+            "service_type",
+            "copay_or_coinsurance",
+            "prior_auth_required",
+            "rep_name",
+            "reference_number"
+          ]
+        }
+      }
+    ],
+    "model_choice": {
+      "type": "cascading",
+      "model": "gpt-5.1",
+      "high_priority": false
+    },
+    "tool_call_strict_mode": true,
+    "default_dynamic_variables": {
+      "member_id": "AET987654321",
+      "service_type": "specialist office visit",
+      "provider_npi": "1234567890",
+      "patient_dob": "1979-07-22",
+      "group_number": "GRP00456",
+      "patient_last_name": "Gonzalez",
+      "insurance_company": "Aetna",
+      "provider_name": "Retell Clinic",
+      "patient_first_name": "Maria"
+    },
+    "knowledge_base_ids": [],
+    "kb_config": {
+      "top_k": 3,
+      "filter_score": 0.6
+    },
+    "begin_tag_display_position": {
+      "x": 6,
+      "y": 270
+    },
+    "is_published": false,
+    "flex_mode": false,
+    "is_transfer_cf": false
+  }
+}
