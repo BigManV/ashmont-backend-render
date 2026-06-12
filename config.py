@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     retell_create_call_url: str = "https://api.retellai.com/v2/create-phone-call"
     retell_webhook_secret: str = ""
 
+    max_call_attempts: int = 6
+    max_voicemail_attempts: int = 3
+    appointment_reminder_minutes: int = 30
+
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""

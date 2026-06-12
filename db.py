@@ -71,6 +71,7 @@ def ensure_booking_workflow_schema() -> None:
         alter table appointments add column if not exists calendar_provider text not null default 'calcom';
         alter table appointments add column if not exists external_booking_id text;
         alter table appointments add column if not exists external_event_type_id text;
+        alter table appointments add column if not exists reminder_sent_at timestamptz;
 
         create table if not exists system_health_checks (
           id uuid primary key default gen_random_uuid(),
@@ -265,6 +266,19 @@ def has_recent_active_call(lead_id: str, lookback_minutes: int = 10) -> bool:
     return bool(row)
 
 
+def count_call_attempts(lead_id: str) -> int:
+    row = fetch_one("select count(*) as count from call_attempts where lead_id = %s", (lead_id,))
+    return int(row["count"] or 0) if row else 0
+
+
+def count_voicemail_attempts(lead_id: str) -> int:
+    row = fetch_one(
+        "select count(*) as count from call_attempts where lead_id = %s and voicemail = true",
+        (lead_id,),
+    )
+    return int(row["count"] or 0) if row else 0
+
+
 def mark_call_triggered(lead_id: str, retell_call_id: str | None, attempt_number: int = 1) -> dict:
     call_id = str(uuid4())
     row = execute(
@@ -377,7 +391,7 @@ def log_lead_qualification(lead_id: str, qualified: bool, log_payload: dict) -> 
         "logged_at": log_payload.get("logged_at") or utc_now().isoformat(),
     }
     payload_json = jsonb(payload)
-    return owners.with_owner_name(execute(
+    row = execute(
         """
         update leads
         set status = case
@@ -409,7 +423,10 @@ def log_lead_qualification(lead_id: str, qualified: bool, log_payload: dict) -> 
             "qualification_status": qualification_status,
             "payload": payload_json,
         },
-    ))
+    )
+    if row and not qualified and not row.get("appointment_booked"):
+        stop_sequence_runs_for_lead(lead_id, "not_qualified")
+    return owners.with_owner_name(row)
 
 
 def flag_lead_for_review(lead_id: str, reason: str, metadata: dict | None = None) -> dict | None:
@@ -847,6 +864,17 @@ def create_appointment(values: dict) -> dict:
                 """,
                 (appointment_id, prepared["owner_key"], prepared["lead_id"]),
             )
+            cur.execute(
+                """
+                update sequence_runs
+                set status = 'stopped',
+                    stopped_reason = 'appointment_booked',
+                    updated_at = now()
+                where lead_id = %s
+                  and status = 'active'
+                """,
+                (prepared["lead_id"],),
+            )
         conn.commit()
     return owners.with_owner_name(row)
 
@@ -958,6 +986,17 @@ def upsert_calendar_appointment(values: dict) -> dict:
                     """,
                     (row["id"], prepared["owner_key"], prepared["lead_id"]),
                 )
+                cur.execute(
+                    """
+                    update sequence_runs
+                    set status = 'stopped',
+                        stopped_reason = 'appointment_booked',
+                        updated_at = now()
+                    where lead_id = %s
+                      and status = 'active'
+                    """,
+                    (prepared["lead_id"],),
+                )
             else:
                 cur.execute(
                     """
@@ -973,6 +1012,41 @@ def upsert_calendar_appointment(values: dict) -> dict:
                 )
         conn.commit()
     return owners.with_owner_name(row)
+
+
+def claim_appointments_for_reminder(window_minutes: int, limit: int = 10) -> list[dict]:
+    # Atomically marks reminder_sent_at while claiming, so a reminder SMS is
+    # sent at most once per appointment even with concurrent workers.
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                with due as (
+                    select a.id
+                    from appointments a
+                    join leads l on l.id = a.lead_id
+                    where a.status = 'booked'
+                      and a.reminder_sent_at is null
+                      and a.start_time > now()
+                      and a.start_time <= now() + (%s || ' minutes')::interval
+                      and l.opt_out_sms = false
+                      and l.phone_number is not null
+                    order by a.start_time asc
+                    limit %s
+                    for update of a skip locked
+                )
+                update appointments a
+                set reminder_sent_at = now()
+                from due, leads l
+                where a.id = due.id
+                  and l.id = a.lead_id
+                returning a.*, l.full_name, l.phone_number
+                """,
+                (window_minutes, limit),
+            )
+            rows = cur.fetchall()
+        conn.commit()
+    return rows
 
 
 def cancel_calendar_appointment(calendar_provider: str, external_booking_id: str, metadata: dict | None = None) -> dict | None:
@@ -1027,6 +1101,25 @@ def upsert_sms_message(values: dict) -> dict:
     )
 
 
+def stop_sequence_runs_for_lead(lead_id: str, reason: str) -> int:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update sequence_runs
+                set status = 'stopped',
+                    stopped_reason = %s,
+                    updated_at = now()
+                where lead_id = %s
+                  and status = 'active'
+                """,
+                (reason, lead_id),
+            )
+            stopped = cur.rowcount
+        conn.commit()
+    return stopped
+
+
 def set_sms_opt_out(lead_id: str) -> None:
     execute(
         """
@@ -1039,6 +1132,7 @@ def set_sms_opt_out(lead_id: str) -> None:
         """,
         (lead_id,),
     )
+    stop_sequence_runs_for_lead(lead_id, "sms_opt_out")
 
 
 def create_alert(alert_type: str, severity: str, title: str, message: str, lead_id: str | None = None, metadata: dict | None = None) -> dict:
@@ -1283,23 +1377,45 @@ def reschedule_sequence_run(run_id: str, next_run_at: datetime, reason: str) -> 
 
 
 def due_sequence_runs(limit: int = 20) -> list[dict]:
-    return fetch_all(
-        """
-        select r.*, l.full_name, l.phone_number, l.email, l.business_type, l.opt_out_sms, l.appointment_booked,
-               s.channel, s.template, s.delay_minutes
-        from sequence_runs r
-        join leads l on l.id = r.lead_id
-        join sequence_steps s on s.sequence_key = r.sequence_key and s.step_number = r.current_step
-        where r.status = 'active'
-          and r.next_run_at <= now()
-          and s.active = true
-          and l.opt_out_sms = false
-          and l.appointment_booked = false
-        order by r.next_run_at asc
-        limit %s
-        """,
-        (limit,),
-    )
+    # Claims due runs atomically (FOR UPDATE SKIP LOCKED + a short lease on
+    # next_run_at) so concurrent worker instances never double-process a run.
+    # advance_sequence/reschedule_sequence_run overwrite the lease afterwards.
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                with due as (
+                    select r.id
+                    from sequence_runs r
+                    join leads l on l.id = r.lead_id
+                    join sequence_steps s on s.sequence_key = r.sequence_key and s.step_number = r.current_step
+                    where r.status = 'active'
+                      and r.next_run_at <= now()
+                      and s.active = true
+                      and l.opt_out_sms = false
+                      and l.appointment_booked = false
+                      and coalesce(l.sequence_status, '') <> 'stopped'
+                      and coalesce(l.status, '') not in ('not_qualified', 'booked', 'opted_out')
+                    order by r.next_run_at asc
+                    limit %s
+                    for update of r skip locked
+                )
+                update sequence_runs r
+                set next_run_at = now() + interval '3 minutes',
+                    updated_at = now()
+                from due, leads l, sequence_steps s
+                where r.id = due.id
+                  and l.id = r.lead_id
+                  and s.sequence_key = r.sequence_key
+                  and s.step_number = r.current_step
+                returning r.*, l.full_name, l.phone_number, l.email, l.business_type, l.opt_out_sms, l.appointment_booked,
+                          s.channel, s.template, s.delay_minutes
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        conn.commit()
+    return rows
 
 
 def advance_sequence(run_id: str, current_step: int) -> None:

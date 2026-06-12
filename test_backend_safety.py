@@ -255,3 +255,60 @@ def test_appointment_notification_targets_allocated_owner_and_customer():
     assert recipients == ["ananay@advogueai.org", "customer@example.com", "ops-team@ashmont.example"]
     assert "Jordan Smith with Archit" in message["Subject"]
     assert "Owner fallback was used" in message.get_content()
+
+
+def test_retell_webhook_signature_verifies_raw_body(monkeypatch):
+    from config import get_settings
+    from services import retell
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "retell_webhook_secret", "retell-secret")
+    monkeypatch.setattr(settings, "retell_api_key", "retell-api-key")
+
+    body = b'{"event":"call_analyzed","call":{"call_id":"call_123"}}'
+    secret_signature = hmac.new(b"retell-secret", body, hashlib.sha256).hexdigest()
+    api_key_signature = hmac.new(b"retell-api-key", body, hashlib.sha256).hexdigest()
+
+    assert retell.verify_webhook_signature(body, secret_signature)
+    assert retell.verify_webhook_signature(body, api_key_signature)
+    assert not retell.verify_webhook_signature(body, "bad-signature")
+    assert not retell.verify_webhook_signature(body, None)
+
+
+def test_retell_webhook_signature_skipped_only_when_no_keys_configured(monkeypatch):
+    from config import get_settings
+    from services import retell
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "retell_webhook_secret", "")
+    monkeypatch.setattr(settings, "retell_api_key", "")
+
+    assert retell.verify_webhook_signature(b"{}", None)
+
+
+def test_appointment_reminder_sms_includes_owner_time_and_opt_out():
+    from services.outreach import build_reminder_sms
+
+    body = build_reminder_sms(
+        {
+            "full_name": "Jordan Smith",
+            "owner_key": "archit",
+            "timezone": "America/New_York",
+            "start_time": datetime(2026, 6, 3, 15, 0, tzinfo=ZoneInfo("UTC")),
+            "meeting_url": "https://cal.example/meeting",
+        }
+    )
+
+    assert "Jordan" in body
+    assert "Archit" in body
+    assert "11:00 AM" in body
+    assert "https://cal.example/meeting" in body
+    assert "STOP" in body
+
+
+def test_dialing_caps_have_safe_defaults():
+    settings = Settings()
+
+    assert settings.max_call_attempts == 6
+    assert settings.max_voicemail_attempts == 3
+    assert settings.appointment_reminder_minutes == 30

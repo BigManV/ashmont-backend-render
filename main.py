@@ -38,7 +38,7 @@ from models import (
     LeadQualificationLogRequest,
     OutreachStepInput,
 )
-from services import alerts, calendar_provider, calcom, momentum, outreach, retell, twilio
+from services import alerts, calendar_provider, calcom, gmail, momentum, outreach, retell, twilio
 from utils import extract_retell_call, first_present, is_business_hours_et, normalize_us_phone, parse_dt
 from utils import (
     analysis_claims_booking,
@@ -267,7 +267,27 @@ async def new_lead(payload: LeadIntake, _: None = Depends(require_intake_key)) -
 
 @app.post("/webhook")
 async def retell_webhook(request: Request) -> dict:
-    payload = await request.json()
+    raw_body = await request.body()
+    signature = request.headers.get("x-retell-signature")
+    if not retell.verify_webhook_signature(raw_body, signature):
+        db.create_webhook_receipt(
+            "retell",
+            {"signature_present": bool(signature)},
+            status="rejected",
+        )
+        await alerts.create_alert(
+            "retell_webhook_unverified",
+            "warning",
+            "Rejected Retell webhook with invalid signature",
+            "Signature header missing." if not signature else "Signature did not match the configured Retell key.",
+        )
+        raise HTTPException(status_code=401, detail="Invalid Retell webhook signature.")
+    try:
+        payload = json.loads(raw_body or b"{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Retell webhook body must be valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Retell webhook body must be a JSON object.")
     call = extract_retell_call(payload)
     event = first_present(payload.get("event"), payload.get("event_type"), payload.get("type"), call.get("event"))
     retell_call_id = first_present(call.get("call_id"), call.get("id"), payload.get("call_id"))
@@ -395,7 +415,20 @@ async def retell_webhook(request: Request) -> dict:
                     {"retell_call_id": retell_call_id, "analysis": analysis, "transcript": transcript},
                 )
             if not answered:
-                db.queue_sequence_for_lead(lead["id"], delay_minutes=5)
+                call_attempts = db.count_call_attempts(lead["id"])
+                voicemail_attempts = db.count_voicemail_attempts(lead["id"])
+                if call_attempts >= settings.max_call_attempts or voicemail_attempts >= settings.max_voicemail_attempts:
+                    await alerts.create_alert(
+                        "max_call_attempts_reached",
+                        "warning",
+                        "Lead reached the dialing cap",
+                        f"No more automatic redials: {call_attempts} call attempts, {voicemail_attempts} voicemails. "
+                        "Remaining SMS sequence steps still run on schedule.",
+                        lead["id"],
+                        {"retell_call_id": retell_call_id, "call_attempts": call_attempts, "voicemails": voicemail_attempts},
+                    )
+                else:
+                    db.queue_sequence_for_lead(lead["id"], delay_minutes=5)
             db.complete_webhook_receipt(receipt_id, "processed", lead_id=lead["id"])
             return {"ok": True, "event": event, "call_attempt_id": updated_call["id"] if updated_call else None}
 
@@ -1177,6 +1210,29 @@ async def calendar_book(payload: CalendarBookingRequest, _: None = Depends(requi
             {"appointment_id": appointment["id"], "notification": notification},
         )
 
+    email_notification = await gmail.send_appointment_notification(
+        appointment=appointment,
+        lead=lead,
+        booking=booking_result,
+        fallback_used=fallback_used,
+    )
+    if email_notification.get("configured"):
+        if email_notification.get("ok"):
+            db.create_crm_job(
+                payload.lead_id,
+                "appointment_email_sent",
+                {"appointment_id": appointment["id"], "email": email_notification},
+            )
+        else:
+            await alerts.create_alert(
+                "appointment_email_failed",
+                "warning",
+                "Appointment notification email did not send",
+                str(email_notification.get("error") or "Gmail appointment notification failed."),
+                payload.lead_id,
+                {"appointment_id": appointment["id"], "email": email_notification},
+            )
+
     return {
         "ok": True,
         "appointment": appointment,
@@ -1185,6 +1241,7 @@ async def calendar_book(payload: CalendarBookingRequest, _: None = Depends(requi
         "fallback_used": fallback_used,
         "attempts": attempts,
         "notification": notification,
+        "email_notification": email_notification,
     }
 
 

@@ -1,11 +1,35 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+
 import httpx
 
 import db
 import owners
 from config import get_settings
 from utils import clean_full_name, is_outbound_call_time, is_valid_email, next_outbound_call_time, normalize_email, normalize_us_phone
+
+
+def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
+    """Verify the X-Retell-Signature header (HMAC-SHA256 hex of the raw body).
+
+    Retell signs webhooks with the account API key; RETELL_WEBHOOK_SECRET can
+    override it. Verification is skipped only when neither key is configured
+    (local development).
+    """
+    settings = get_settings()
+    keys = [key for key in (settings.retell_webhook_secret, settings.retell_api_key) if key]
+    if not keys:
+        return True
+    if not signature:
+        return False
+    provided = signature.strip()
+    for key in keys:
+        digest = hmac.new(key.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(digest, provided):
+            return True
+    return False
 
 
 async def trigger_call(lead: dict, attempt_number: int = 1) -> dict:

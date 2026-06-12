@@ -91,6 +91,7 @@ create table if not exists appointments (
   invitee_email text,
   lead_agreed boolean not null default true,
   transcript_verified boolean not null default false,
+  reminder_sent_at timestamptz,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
