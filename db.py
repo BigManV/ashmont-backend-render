@@ -85,6 +85,15 @@ def ensure_booking_workflow_schema() -> None:
         create index if not exists idx_system_health_checks_type_created
           on system_health_checks(check_type, created_at desc);
 
+        create table if not exists dashboard_users (
+          id uuid primary key,
+          email text unique not null,
+          display_name text not null,
+          access_level text not null default 'full',
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        );
+
         create table if not exists appointment_slot_holds (
           id uuid primary key default gen_random_uuid(),
           lead_id uuid not null references leads(id) on delete cascade,
@@ -207,6 +216,27 @@ def get_lead_by_email(email: str) -> dict | None:
     if not normalized:
         return None
     return owners.with_owner_name(fetch_one("select * from leads where lower(coalesce(email, '')) = %s", (normalized,)))
+
+
+def upsert_dashboard_user_profile(user: dict) -> dict:
+    return execute(
+        """
+        insert into dashboard_users (id, email, display_name, access_level)
+        values (%(id)s, %(email)s, %(display_name)s, %(access_level)s)
+        on conflict (id) do update set
+            email = excluded.email,
+            display_name = excluded.display_name,
+            access_level = excluded.access_level,
+            updated_at = now()
+        returning *
+        """,
+        {
+            "id": user["id"],
+            "email": user["email"],
+            "display_name": user.get("display_name") or user["email"],
+            "access_level": user.get("access_level") or "full",
+        },
+    )
 
 
 def next_owner_key() -> str:

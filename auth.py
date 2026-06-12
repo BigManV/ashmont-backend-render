@@ -1,14 +1,88 @@
 from __future__ import annotations
 
+import hmac
+import json
+from uuid import NAMESPACE_URL, uuid5
+
 from fastapi import Depends, Header, HTTPException, Query, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, APIKeyHeader
 from jose import JWTError, jwt
 
 from config import get_settings
+from utils import utc_now
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
 intake_key_header = APIKeyHeader(name="x-intake-api-key", auto_error=False)
+
+
+def _dashboard_token_secret() -> str:
+    settings = get_settings()
+    return settings.dashboard_token_secret or settings.supabase_jwt_secret
+
+
+def _configured_dashboard_users() -> list[dict]:
+    settings = get_settings()
+    raw = (settings.dashboard_users_json or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=503, detail="DASHBOARD_USERS_JSON is invalid JSON.") from exc
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=503, detail="DASHBOARD_USERS_JSON must be a JSON array.")
+    users = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        email = str(item.get("email") or "").strip().lower()
+        password = str(item.get("password") or "")
+        if not email or not password:
+            continue
+        users.append(
+            {
+                "id": str(item.get("id") or uuid5(NAMESPACE_URL, f"ashmont-dashboard:{email}")),
+                "email": email,
+                "password": password,
+                "display_name": item.get("display_name") or email.split("@")[0],
+                "access_level": item.get("access_level") or "full",
+            }
+        )
+    return users
+
+
+def dashboard_auth_configured() -> bool:
+    return bool(_configured_dashboard_users() and _dashboard_token_secret())
+
+
+def authenticate_dashboard_user(email: str, password: str) -> dict | None:
+    normalized = str(email or "").strip().lower()
+    attempted_password = str(password or "")
+    for user in _configured_dashboard_users():
+        if user["email"] == normalized and hmac.compare_digest(user["password"], attempted_password):
+            return {key: value for key, value in user.items() if key != "password"}
+    return None
+
+
+def create_dashboard_token(user: dict) -> str:
+    settings = get_settings()
+    secret = _dashboard_token_secret()
+    if not secret:
+        raise HTTPException(status_code=503, detail="Dashboard token secret is not configured.")
+    now = utc_now()
+    exp = now.timestamp() + (settings.dashboard_token_ttl_minutes * 60)
+    return jwt.encode(
+        {
+            "sub": user["id"],
+            "email": user["email"],
+            "role": "authenticated",
+            "iat": int(now.timestamp()),
+            "exp": int(exp),
+        },
+        secret,
+        algorithm="HS256",
+    )
 
 
 def require_user(credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme)) -> dict:
@@ -37,6 +111,17 @@ def require_user(credentials: HTTPAuthorizationCredentials | None = Security(bea
     try:
         import db
         profile = db.fetch_one("select * from app_users where id = %s", (claims.get("sub"),))
+        if not profile:
+            profile = db.fetch_one(
+                """
+                select *
+                from dashboard_users
+                where id = %s
+                   or lower(email) = lower(%s)
+                limit 1
+                """,
+                (claims.get("sub"), claims.get("email") or ""),
+            )
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not verify dashboard access.") from exc
     if not profile:

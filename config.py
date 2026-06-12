@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     alert_slack_webhook_url: str = ""
     momentum_api_key: str = ""
     momentum_api_base_url: str = "https://receiver.momentum.io"
+    dashboard_users_json: str = ""
+    dashboard_token_secret: str = ""
+    dashboard_token_ttl_minutes: int = 1440
 
     @property
     def calendar_timezone(self) -> str:

@@ -25,6 +25,11 @@ class LeadIntake(BaseModel):
     _normalize_optional_fields = field_validator("email", "submitted_at", mode="before")(blank_to_none)
 
 
+class DashboardLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+
 class LeadListRequest(BaseModel):
     search: str | None = None
     status: str | None = None

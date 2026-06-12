@@ -12,7 +12,14 @@ from fastapi.responses import PlainTextResponse
 import db
 import mock_data
 import owners
-from auth import require_intake_key, require_tool_key, require_user
+from auth import (
+    authenticate_dashboard_user,
+    create_dashboard_token,
+    dashboard_auth_configured,
+    require_intake_key,
+    require_tool_key,
+    require_user,
+)
 from config import get_settings
 from models import (
     AdSpendInput,
@@ -25,6 +32,7 @@ from models import (
     CalendarHoldTimeAgreementRequest,
     CalendarLatestHoldBookingConfirmationRequest,
     CalendarLatestHoldTimeAgreementRequest,
+    DashboardLoginRequest,
     LeadIntake,
     LeadListRequest,
     LeadQualificationLogRequest,
@@ -127,6 +135,8 @@ async def readiness(response: Response) -> dict:
         missing.append("calendar provider credentials")
     if calendar_provider.provider_name() == "calcom" and not settings.cal_webhook_secret:
         missing.append("CAL_WEBHOOK_SECRET")
+    if production and not dashboard_auth_configured():
+        missing.append("DASHBOARD_USERS_JSON")
 
     checks: dict[str, Any] = {
         "env": settings.app_env,
@@ -138,6 +148,7 @@ async def readiness(response: Response) -> dict:
         "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number),
         "gmail_configured": bool(settings.gmail_username and settings.gmail_app_password),
         "momentum_configured": bool(settings.momentum_api_key),
+        "dashboard_auth_configured": dashboard_auth_configured(),
     }
     if settings.database_url and not settings.dev_mock_data:
         try:
@@ -164,6 +175,25 @@ async def readiness(response: Response) -> dict:
 @app.get("/me")
 async def me(user: dict = Depends(require_user)) -> dict:
     return {"user": user}
+
+
+@app.post("/auth/login")
+async def dashboard_login(payload: DashboardLoginRequest) -> dict:
+    user = authenticate_dashboard_user(str(payload.email), payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid dashboard credentials.")
+    if settings.database_url and not settings.dev_mock_data:
+        db.upsert_dashboard_user_profile(user)
+    return {
+        "ok": True,
+        "access_token": create_dashboard_token(user),
+        "token_type": "bearer",
+        "user": {
+            "email": user["email"],
+            "display_name": user.get("display_name"),
+            "access_level": user.get("access_level"),
+        },
+    }
 
 
 @app.post("/new-lead")
