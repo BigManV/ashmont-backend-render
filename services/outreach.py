@@ -16,8 +16,10 @@ def render_template(template: str, row: dict) -> str:
     )
 
 
-async def process_due_sequences() -> None:
+async def process_due_sequences() -> int:
+    processed = 0
     for row in db.due_sequence_runs(limit=20):
+        processed += 1
         if row.get("appointment_booked") or row.get("opt_out_sms"):
             db.advance_sequence(row["id"], row["current_step"])
             continue
@@ -41,6 +43,8 @@ async def process_due_sequences() -> None:
                     row["lead_id"],
                     result,
                 )
+                db.reschedule_sequence_run(row["id"], utc_now() + timedelta(minutes=15), "twilio_send_failed")
+                continue
             else:
                 db.upsert_sms_message(
                     {
@@ -95,23 +99,44 @@ async def process_due_sequences() -> None:
                     row["lead_id"],
                     result,
                 )
+                db.reschedule_sequence_run(row["id"], utc_now() + timedelta(minutes=15), "retell_sequence_failed")
+                continue
         else:
             db.log_sequence_event(row["id"], row["lead_id"], row["current_step"], channel, "skipped", None, "Unsupported channel.")
 
         db.advance_sequence(row["id"], row["current_step"])
+    return processed
 
 
 async def run_forever() -> None:
     while True:
         try:
-            await process_due_sequences()
-        except Exception as exc:
-            await alerts.create_alert(
-                "outreach_worker_error",
-                "urgent",
-                "Outreach worker error",
-                str(exc),
+            processed = await process_due_sequences()
+            db.record_system_health(
+                "outreach_worker",
+                "ok",
+                f"Processed {processed} due sequence run(s).",
+                {"processed": processed},
             )
+        except Exception as exc:
+            try:
+                db.record_system_health(
+                    "outreach_worker",
+                    "error",
+                    str(exc),
+                    {"error": str(exc)},
+                )
+            except Exception:
+                pass
+            try:
+                await alerts.create_alert(
+                    "outreach_worker_error",
+                    "urgent",
+                    "Outreach worker error",
+                    str(exc),
+                )
+            except Exception:
+                pass
         await asyncio.sleep(30)
 
 

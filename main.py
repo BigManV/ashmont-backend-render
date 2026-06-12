@@ -517,6 +517,43 @@ async def dashboard_kpis(_: dict = Depends(require_user)) -> dict:
     return {"ok": True, "kpis": db.get_kpis()}
 
 
+@app.get("/workers/status")
+async def workers_status(_: dict = Depends(require_user)) -> dict:
+    if settings.dev_mock_data:
+        return {
+            "ok": True,
+            "workers": {
+                "active_sequence_runs": 0,
+                "due_sequence_runs": 0,
+                "next_sequence_run_at": None,
+                "last_sequence_event_at": None,
+                "sequence_events_24h": {},
+                "outreach_worker": {
+                    "status": "ok",
+                    "message": "Demo worker is idle.",
+                    "metadata": {},
+                    "created_at": utc_now(),
+                },
+            },
+            "providers": {
+                "retell_configured": True,
+                "twilio_configured": True,
+                "momentum_configured": True,
+                "calendar_configured": True,
+            },
+        }
+    return {
+        "ok": True,
+        "workers": db.get_worker_status(),
+        "providers": {
+            "retell_configured": bool(settings.retell_api_key and settings.retell_agent_id and settings.retell_from_number),
+            "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number),
+            "momentum_configured": bool(settings.momentum_api_key),
+            "calendar_configured": any(calendar_provider.status(owner_key)["configured"] for owner_key in owners.OWNER_KEYS),
+        },
+    }
+
+
 @app.post("/leads/list")
 async def leads_list(payload: LeadListRequest, _: dict = Depends(require_user)) -> dict:
     if settings.dev_mock_data:

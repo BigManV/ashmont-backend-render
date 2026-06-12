@@ -72,6 +72,19 @@ def ensure_booking_workflow_schema() -> None:
         alter table appointments add column if not exists external_booking_id text;
         alter table appointments add column if not exists external_event_type_id text;
 
+        create table if not exists system_health_checks (
+          id uuid primary key default gen_random_uuid(),
+          check_type text not null,
+          status text not null,
+          latency_ms integer,
+          message text,
+          metadata jsonb not null default '{}'::jsonb,
+          created_at timestamptz not null default now()
+        );
+
+        create index if not exists idx_system_health_checks_type_created
+          on system_health_checks(check_type, created_at desc);
+
         create table if not exists appointment_slot_holds (
           id uuid primary key default gen_random_uuid(),
           lead_id uuid not null references leads(id) on delete cascade,
@@ -1081,6 +1094,78 @@ def get_outreach_config() -> list[dict]:
         order by step_number asc
         """
     )
+
+
+def record_system_health(
+    check_type: str,
+    status: str,
+    message: str | None = None,
+    metadata: dict | None = None,
+    latency_ms: int | None = None,
+) -> dict:
+    return execute(
+        """
+        insert into system_health_checks (id, check_type, status, latency_ms, message, metadata)
+        values (%s, %s, %s, %s, %s, %s)
+        returning *
+        """,
+        (str(uuid4()), check_type, status, latency_ms, message, jsonb(metadata or {})),
+    )
+
+
+def get_worker_status() -> dict:
+    runs = fetch_one(
+        """
+        select
+            count(*) filter (where status = 'active') as active_sequence_runs,
+            count(*) filter (where status = 'active' and next_run_at <= now()) as due_sequence_runs,
+            min(next_run_at) filter (where status = 'active') as next_sequence_run_at
+        from sequence_runs
+        """
+    ) or {}
+    event_rows = fetch_all(
+        """
+        select channel, status, count(*) as count
+        from sequence_events
+        where created_at >= now() - interval '24 hours'
+        group by channel, status
+        """
+    )
+    latest_event = fetch_one(
+        """
+        select created_at
+        from sequence_events
+        order by created_at desc
+        limit 1
+        """
+    )
+    latest_worker = fetch_one(
+        """
+        select status, message, metadata, created_at
+        from system_health_checks
+        where check_type = 'outreach_worker'
+        order by created_at desc
+        limit 1
+        """
+    )
+    events_24h = {
+        f"{row['channel']}_{row['status']}_24h": int(row["count"] or 0)
+        for row in event_rows
+    }
+    return {
+        "active_sequence_runs": int(runs.get("active_sequence_runs") or 0),
+        "due_sequence_runs": int(runs.get("due_sequence_runs") or 0),
+        "next_sequence_run_at": runs.get("next_sequence_run_at"),
+        "last_sequence_event_at": (latest_event or {}).get("created_at"),
+        "sequence_events_24h": events_24h,
+        "outreach_worker": latest_worker
+        or {
+            "status": "unknown",
+            "message": "No outreach worker heartbeat has been recorded yet.",
+            "metadata": {},
+            "created_at": None,
+        },
+    }
 
 
 def upsert_outreach_step(values: dict) -> dict:
