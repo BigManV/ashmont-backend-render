@@ -30,7 +30,7 @@ from models import (
     LeadQualificationLogRequest,
     OutreachStepInput,
 )
-from services import alerts, calendar_provider, calcom, gmail, outreach, retell, twilio
+from services import alerts, calendar_provider, calcom, momentum, outreach, retell, twilio
 from utils import extract_retell_call, first_present, is_business_hours_et, normalize_us_phone, parse_dt
 from utils import (
     analysis_claims_booking,
@@ -137,6 +137,7 @@ async def readiness(response: Response) -> dict:
         "retell_configured": bool(settings.retell_api_key and settings.retell_agent_id and settings.retell_from_number),
         "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_phone_number),
         "gmail_configured": bool(settings.gmail_username and settings.gmail_app_password),
+        "momentum_configured": bool(settings.momentum_api_key),
     }
     if settings.database_url and not settings.dev_mock_data:
         try:
@@ -214,6 +215,7 @@ async def new_lead(payload: LeadIntake, _: None = Depends(require_intake_key)) -
                 lead["id"],
                 call_result,
             )
+            db.queue_sequence_for_lead(lead["id"], delay_minutes=5)
 
         return {
             "ok": True,
@@ -313,6 +315,21 @@ async def retell_webhook(request: Request) -> dict:
             )
             db.update_lead_after_call(lead["id"], answered, voicemail, status)
             db.create_crm_job(lead["id"], "call_analyzed", {"call": call, "analysis": analysis})
+            momentum_result = await momentum.ingest_retell_call(lead, updated_call, call, transcript)
+            db.create_crm_job(
+                lead["id"],
+                "momentum_call_ingested" if momentum_result.get("ok") else "momentum_call_ingest_failed",
+                {"call_attempt_id": updated_call["id"] if updated_call else None, "momentum": momentum_result},
+            )
+            if not momentum_result.get("ok"):
+                await alerts.create_alert(
+                    "momentum_call_ingest_failed",
+                    "warning",
+                    "Momentum call ingest failed",
+                    str(momentum_result.get("error") or "Momentum did not accept the call payload."),
+                    lead["id"],
+                    {"retell_call_id": retell_call_id, "momentum": momentum_result},
+                )
             qualification_decision = extract_qualification_decision(analysis)
             if qualification_decision is not None:
                 qualification_reason = None
@@ -1061,7 +1078,7 @@ async def calendar_book(payload: CalendarBookingRequest, _: None = Depends(requi
             },
         )
 
-    notification = await gmail.send_appointment_notification(
+    notification = await momentum.send_appointment_notification(
         appointment=appointment,
         lead=lead,
         booking=booking_result,
@@ -1083,7 +1100,7 @@ async def calendar_book(payload: CalendarBookingRequest, _: None = Depends(requi
             "appointment_notification_failed",
             "warning",
             "Appointment notification did not send",
-            notification.get("error") or "Gmail appointment notification failed.",
+            str(notification.get("error") or "Momentum appointment notification failed."),
             payload.lead_id,
             {"appointment_id": appointment["id"], "notification": notification},
         )

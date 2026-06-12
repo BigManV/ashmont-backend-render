@@ -1114,6 +1114,18 @@ def queue_sequence_for_lead(lead_id: str, delay_minutes: int = 5) -> None:
         """,
         (str(uuid4()), lead_id, delay_minutes),
     )
+    execute(
+        """
+        update leads
+        set sequence_status = 'active',
+            sequence_stage = greatest(coalesce(sequence_stage, 0), 1),
+            updated_at = now()
+        where id = %s
+          and appointment_booked = false
+          and status not in ('booked', 'opted_out')
+        """,
+        (lead_id,),
+    )
 
 
 def queue_sequence_for_lead_at(lead_id: str, next_run_at: datetime, current_step: int = 1) -> None:
@@ -1127,6 +1139,18 @@ def queue_sequence_for_lead_at(lead_id: str, next_run_at: datetime, current_step
             updated_at = now()
         """,
         (str(uuid4()), lead_id, current_step, ensure_aware_utc(next_run_at)),
+    )
+    execute(
+        """
+        update leads
+        set sequence_status = 'active',
+            sequence_stage = greatest(coalesce(sequence_stage, 0), %s),
+            updated_at = now()
+        where id = %s
+          and appointment_booked = false
+          and status not in ('booked', 'opted_out')
+        """,
+        (current_step, lead_id),
     )
 
 
@@ -1182,6 +1206,17 @@ def advance_sequence(run_id: str, current_step: int) -> None:
             """,
             (run_id,),
         )
+        execute(
+            """
+            update leads
+            set sequence_status = 'completed',
+                updated_at = now()
+            where id = (select lead_id from sequence_runs where id = %s)
+              and appointment_booked = false
+              and status not in ('booked', 'opted_out')
+            """,
+            (run_id,),
+        )
         return
     execute(
         """
@@ -1192,6 +1227,18 @@ def advance_sequence(run_id: str, current_step: int) -> None:
         where id = %s
         """,
         (next_step, next_row["delay_minutes"], run_id),
+    )
+    execute(
+        """
+        update leads
+        set sequence_status = 'active',
+            sequence_stage = %s,
+            updated_at = now()
+        where id = (select lead_id from sequence_runs where id = %s)
+          and appointment_booked = false
+          and status not in ('booked', 'opted_out')
+        """,
+        (next_step, run_id),
     )
 
 
